@@ -77,10 +77,10 @@
       padding: 20px;
       max-width: 400px;
       box-shadow: 0px 4px 10px rgba(0,0,0,0.1);
-      height: 240px;
+      height: 200px;
     }
     .logs {
-      height: 170px;
+      height: 205px;
       overflow-y: auto;
       background: #eee;
       padding: 10px;
@@ -99,9 +99,9 @@
 </head>
 <body>
   <div class="sidebar">
-    <a href="#">Dashboard</a>
+    <a href="dashboard.html">Dashboard</a>
     <a href="#">Traffic Lights</a>
-    <a href="#">Live Map</a>
+    <a href="path.html">Live Map</a>
     <a href="#">Alerts</a>
     <a href="#">Analytics</a>
     <a href="#">Settings</a>
@@ -129,7 +129,7 @@
           <p>Select a 🚦 marker on the map.</p>
           <p id="time-left">Time Left: --</p>
           <p id="cars">Cars waiting: --</p>
-          <p id="pedestrians">People waiting: --</p>
+          <!--<p id="pedestrians">People waiting: --</p>-->
         </div>
         <div class="card">
           <h3>System Logs</h3>
@@ -179,11 +179,9 @@
         document.getElementById("info").innerHTML = `
           <h2>Traffic Light: ${light.id}</h2>
           <p><b>Status:</b> ${light.status}</p>
-          <p><b>Pedestrians waiting:</b> ${light.pedestrians}</p>
           <p><b>Location:</b> ${light.coords[0].toFixed(4)}, ${light.coords[1].toFixed(4)}</p>
           <p id="time-left">Time Left: --</p>
           <p id="cars">Cars waiting: --</p>
-          <p id="pedestrians">People waiting: ${light.pedestrians}</p>
         `;
       });
     });
@@ -218,37 +216,38 @@
       .bindPopup("<b>Accident</b><br>Ambulance called");
 
     // Dashboard auto updates
-    function updateDashboard() {
-      let timeLeft;
-      let cars = Math.floor(Math.random() * 20);   // simulate car count
-      let pedestrians = Math.floor(Math.random() * 30); // simulate pedestrians
+      function updateDashboard() {
+    let timeLeft;
+    let cars = Math.floor(Math.random() * 20);   // simulate car count
+    let pedestrians = Math.floor(Math.random() * 30); // simulate pedestrians
 
-      // Update DOM
-      document.getElementById("cars").innerText = "Cars waiting: " + cars;
-      document.getElementById("pedestrians").innerText = "People waiting: " + pedestrians;
+    // Update DOM
+    document.getElementById("cars").innerText = "Cars waiting: " + cars;
+    //document.getElementById("pedestrians").innerText = "People waiting: " + pedestrians;
 
-      // Adaptive signal timing logic
-      if(cars >= 20) timeLeft = 60;
-      else if(cars >= 10) timeLeft = 30;
-      else if(cars > 0) timeLeft = 10;
-      else timeLeft = 0;
+    // Adaptive signal timing logic
+    if (cars >= 20) timeLeft = 60;
+    else if (cars >= 10) timeLeft = 30;
+    else if (cars > 0) timeLeft = 10;
+    else timeLeft = 0;
 
-      document.getElementById("time-left").innerText = "Time Left: " + timeLeft + "s";
+    document.getElementById("time-left").innerText = "Time Left: " + timeLeft + "s";
 
-      // Logs
-      let logs = document.getElementById("logs");
-      let now = new Date().toLocaleTimeString();
-      let msg = document.createElement("p");
-      msg.innerText = `[${now}] Traffic updated (time left: ${timeLeft}s, cars: ${cars}, pedestrians: ${pedestrians})`;
-      logs.prepend(msg);
+    // Logs
+    let logs = document.getElementById("logs");
+    let now = new Date().toLocaleTimeString();
+    let msg = document.createElement("p");
+    msg.innerText = `[${now}] Traffic updated (time left: ${timeLeft}s, cars: ${cars}, pedestrians: ${pedestrians})`;
+    logs.prepend(msg);
 
-      // Simulate ambulance movement
-      let lat = 13.739 + (Math.random() - 0.5) * 0.01;
-      let lng = 100.525 + (Math.random() - 0.5) * 0.01;
-      ambulance.setLatLng([lat, lng]);
-    }
+    // Simulate ambulance movement
+    let lat = 13.739 + (Math.random() - 0.5) * 0.01;
+    let lng = 100.525 + (Math.random() - 0.5) * 0.01;
+    ambulance.setLatLng([lat, lng]);
+  }
 
     setInterval(updateDashboard, 3000);
   </script>
 </body>
 </html>
+
