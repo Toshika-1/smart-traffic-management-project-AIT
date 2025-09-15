@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Traffic Management Dashboard</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body, html {
+      height: 100%;
+      font-family: Arial, sans-serif;
+      background: #1e293b;
+      color: white;
+    }
+
+    #layout {
+      display: grid;
+      grid-template-columns: 220px 300px 1fr; /* sidebar | controls | map */
+      height: 100vh;
+    }
+
+    .sidebar {
+      height: 100vh;
+      width: 220px;
+      background: linear-gradient(to bottom, #003366, #3399ff);
+      padding-top: 20px;
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar a {
+      padding: 15px 20px;
+      text-decoration: none;
+      color: white;
+      font-size: 18px;
+      display: block;
+      text-align: left;
+    }
+    .sidebar a:hover {
+      background: rgba(255,255,255,0.2);
+      border-radius: 5px;
+    }
+
+
+
+    .sidebar ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .sidebar li {
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 8px;
+      transition: background 0.2s;
+    }
+
+    .sidebar li:hover {
+      background: #1e293b;
+    }
+
+    /* Controls panel */
+    .controls-panel {
+      background: #0f172a;
+      padding: 20px;
+      border-right: 2px solid #1e293b;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .controls-panel h1 {
+      font-size: 1.2em;
+      margin-bottom: 10px;
+      color: #38bdf8;
+    }
+
+    .controls label {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      font-size: 0.9em;
+    }
+
+    .controls select, .controls button, .controls input[type="checkbox"] {
+      padding: 6px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.9em;
+    }
+
+    .controls button {
+      cursor: pointer;
+      background: #38bdf8;
+      color: #0f172a;
+      font-weight: bold;
+      transition: background 0.2s;
+    }
+
+    .controls button:hover {
+      background: #0ea5e9;
+    }
+
+    .badge {
+      display: inline-block;
+      background: #1e40af;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.8em;
+      margin-top: 5px;
+    }
+
+    /* Map */
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div id="layout">
+    <!-- Sidebar -->
+  <div class="sidebar">
+    <a href="dashboard.html">Dashboard</a>
+    <a href="#">Traffic Lights</a>
+    <a href="pathfinder.html">Live Map</a>
+    <a href="#">Alerts</a>
+    <a href="#">Analytics</a>
+    <a href="#">Settings</a>
+  </div>
+
+    <!-- Controls -->
+    <div class="controls-panel">
+      <h1>Optimal Path – Congestion Aware</h1>
+      <div class="controls">
+        <label>Start
+          <select id="startSelect"></select>
+        </label>
+        <label>End
+          <select id="endSelect"></select>
+        </label>
+        <button id="routeBtn">Find Optimal Path</button>
+        <button id="clearBtn">Clear</button>
+        <label style="display:flex;align-items:center;gap:6px;">
+          <input type="checkbox" id="autoUpdate" checked /> Live congestion
+        </label>
+        <span class="badge" id="etaBadge">ETA: –</span>
+        <span class="badge">Click two nodes to auto-fill</span>
+      </div>
+    </div>
+
+    <!-- Map -->
+    <div id="map"></div>
+  </div>
+
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // --- Demo network (mini city grid) ---
+    // Coordinates are around Bangkok for demo purposes
+  const nodes = {
+    A: { id:'A', name: 'Phaya Thai',     lat:13.7576, lng:100.5331 },
+    B: { id:'B', name: 'Victory Monument', lat:13.7629, lng:100.5373 },
+    C: { id:'C', name: 'Siam',           lat:13.7457, lng:100.5347 },
+    D: { id:'D', name: 'Chit Lom',       lat:13.7440, lng:100.5410 },
+    E: { id:'E', name: 'Asok',           lat:13.7367, lng:100.5600 },
+    F: { id:'F', name: 'Phrom Phong',    lat:13.7306, lng:100.5695 },
+    G: { id:'G', name: 'Silom',          lat:13.7283, lng:100.5347 },
+    H: { id:'H', name: 'Lumphini',       lat:13.7309, lng:100.5422 },
+    I: { id:'I', name: 'Ratchathewi',    lat:13.7522, lng:100.5294 },
+    J: { id:'J', name: 'Pratunam',       lat:13.7503, lng:100.5416 },
+    K: { id:'K', name: 'Nana',           lat:13.7416, lng:100.5546 },
+    L: { id:'L', name: 'Sala Daeng',     lat:13.7301, lng:100.5341 },
+  };
+
+    // Edge definition: undirected for demo; congestion in [0..1]
+    // speedFactor = 1/(1+2*congestion) → 0.33..1 (lower means slower)
+    let edges = [
+      // rows
+      { from: 'A', to: 'B', congestion: 0.2 },
+      { from: 'B', to: 'C', congestion: 0.6 },
+      { from: 'D', to: 'E', congestion: 0.1 },
+      { from: 'E', to: 'F', congestion: 0.4 },
+      { from: 'G', to: 'H', congestion: 0.8 },
+      { from: 'H', to: 'I', congestion: 0.2 },
+      // columns
+      { from: 'A', to: 'D', congestion: 0.3 },
+      { from: 'D', to: 'G', congestion: 0.5 },
+      { from: 'B', to: 'E', congestion: 0.7 },
+      { from: 'E', to: 'H', congestion: 0.2 },
+      { from: 'C', to: 'F', congestion: 0.3 },
+      { from: 'F', to: 'I', congestion: 0.6 },
+      // diagonals (shortcuts)
+      { from: 'A', to: 'E', congestion: 0.5 },
+      { from: 'E', to: 'I', congestion: 0.3 },
+      { from: 'C', to: 'E', congestion: 0.2 },
+      { from: 'G', to: 'E', congestion: 0.4 },
+    ];
+
+    // --- Helpers ---
+    const toLatLng = (n) => [nodes[n].lat, nodes[n].lng];
+    const distanceMeters = (a, b) => {
+      // Haversine (approx)
+      const R = 6371e3;
+      const φ1 = nodes[a].lat * Math.PI/180,
+            φ2 = nodes[b].lat * Math.PI/180,
+            Δφ = (nodes[b].lat - nodes[a].lat) * Math.PI/180,
+            Δλ = (nodes[b].lng - nodes[a].lng) * Math.PI/180;
+      const s = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+      return 2*R*Math.asin(Math.sqrt(s));
+    };
+
+    const speedFactor = (cong) => 1 / (1 + 2*cong); // 0.33..1
+    const edgeCost = (e) => {
+      const d = distanceMeters(e.from, e.to); // meters
+      const baseSpeed = 15; // m/s (~54 km/h) baseline
+      const v = baseSpeed * speedFactor(e.congestion);
+      const t = d / v; // seconds
+      return t; // we minimize time
+    };
+
+    const congestionColor = (c) => {
+      if (c < 0.25) return '#16a34a'; // green
+      if (c < 0.5) return '#eab308'; // yellow
+      if (c < 0.75) return '#f97316'; // orange
+      return '#dc2626'; // red
+    };
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(()=> t.classList.remove('show'), 2200);
+    }
+
+    // --- Build adjacency list ---
+    function buildGraph() {
+      const adj = {}; Object.keys(nodes).forEach(id => adj[id] = []);
+      for (const e of edges) {
+        adj[e.from].push({ to: e.to, edge: e });
+        adj[e.to].push({ to: e.from, edge: e });
+      }
+      return adj;
+    }
+
+    // Dijkstra by time cost
+    function dijkstra(start, goal) {
+      const adj = buildGraph();
+      const dist = {}; const prev = {}; const visited = new Set();
+      Object.keys(nodes).forEach(n => dist[n] = Infinity);
+      dist[start] = 0;
+
+      // simple PQ
+      const pq = [{ n: start, d: 0 }];
+      const push = (n, d) => { pq.push({ n, d }); pq.sort((a,b)=>a.d-b.d); };
+
+      while (pq.length) {
+        const { n } = pq.shift();
+        if (visited.has(n)) continue;
+        visited.add(n);
+        if (n === goal) break;
+        for (const { to, edge } of adj[n]) {
+          const w = edgeCost(edge);
+          const nd = dist[n] + w;
+          if (nd < dist[to]) {
+            dist[to] = nd; prev[to] = { n, edge };
+            push(to, nd);
+          }
+        }
+      }
+
+      if (dist[goal] === Infinity) return null;
+      const path = [];
+      let cur = goal;
+      while (cur !== start) {
+        const p = prev[cur]; if (!p) break;
+        path.push({ from: p.n, to: cur, edge: p.edge });
+        cur = p.n;
+      }
+      path.reverse();
+      return { timeSec: dist[goal], segments: path };
+    }
+
+    // --- Leaflet Map ---
+    const map = L.map('map', { zoomControl: true }).setView([13.740, 100.529], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Legend control
+    const Legend = L.Control.extend({
+      onAdd: function () {
+        const div = L.DomUtil.create('div', 'leaflet-control custom-legend');
+        div.innerHTML = `
+          <div style="font-weight:600;margin-bottom:4px;">Congestion</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#16a34a"></span> Low</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#eab308"></span> Moderate</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#f97316"></span> Heavy</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#dc2626"></span> Severe</div>
+        `;
+        return div;
+      },
+      onRemove: function () {}
+    });
+    map.addControl(new Legend({ position: 'bottomright' }));
+
+    // Draw nodes
+    const markerLayer = L.layerGroup().addTo(map);
+    const edgeLayer = L.layerGroup().addTo(map);
+    const routeLayer = L.layerGroup().addTo(map);
+
+    const nodeMarkers = {};
+    Object.values(nodes).forEach(n => {
+      const m = L.circleMarker([n.lat, n.lng], {
+        radius: 6, weight: 2, color: '#0ea5e9', fillColor: '#e0f2fe', fillOpacity: 0.9
+      }).bindTooltip(`Node ${n.id}`, { permanent: true, direction: 'top', offset: [0,-10] }).addTo(markerLayer);
+      nodeMarkers[n.id] = m;
+      m.on('click', () => onNodeClick(n.id));
+    });
+
+    // Draw edges with congestion colors
+    const edgePolylines = new Map();
+    function renderEdges() {
+      edgeLayer.clearLayers();
+      edgePolylines.clear();
+      for (const e of edges) {
+        const line = L.polyline([toLatLng(e.from), toLatLng(e.to)], {
+          color: congestionColor(e.congestion), weight: 6, opacity: 0.85
+        }).bindTooltip(() => `Congestion: ${(e.congestion*100).toFixed(0)}%`, { sticky: true });
+        line.addTo(edgeLayer);
+        edgePolylines.set(e, line);
+      }
+    }
+    renderEdges();
+
+    // UI wiring
+    const startSelect = document.getElementById('startSelect');
+    const endSelect = document.getElementById('endSelect');
+    const routeBtn = document.getElementById('routeBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const autoUpdate = document.getElementById('autoUpdate');
+    const etaBadge = document.getElementById('etaBadge');
+
+    function fillSelects() {
+      const opts = Object.keys(nodes).map(k => `<option value="${k}">${k}</option>`).join('');
+      startSelect.innerHTML = `<option value="" disabled selected>Pick...</option>` + opts;
+      endSelect.innerHTML = `<option value="" disabled selected>Pick...</option>` + opts;
+    }
+    fillSelects();
+
+    routeBtn.addEventListener('click', () => {
+      const s = startSelect.value; const g = endSelect.value;
+      if (!s || !g || s===g) { showToast('Choose different start and end nodes.'); return; }
+      drawRoute(s, g);
+    });
+
+    clearBtn.addEventListener('click', () => { routeLayer.clearLayers(); etaBadge.textContent = 'ETA: –'; });
+
+    let clickBuffer = [];
+    function onNodeClick(id) {
+      clickBuffer.push(id);
+      if (clickBuffer.length === 2) {
+        startSelect.value = clickBuffer[0];
+        endSelect.value = clickBuffer[1];
+        drawRoute(clickBuffer[0], clickBuffer[1]);
+        clickBuffer = [];
+      }
+    }
+
+    function drawRoute(s, g) {
+      const res = dijkstra(s, g);
+      routeLayer.clearLayers();
+      if (!res) { showToast('No path found.'); return; }
+      const coords = [toLatLng(s)];
+      for (const seg of res.segments) coords.push(toLatLng(seg.to));
+      L.polyline(coords, { color: '#0ea5e9', weight: 8, opacity: 0.9 }).addTo(routeLayer);
+      // Arrowheads (simple)
+      for (let i=0;i<coords.length-1;i++) {
+        const mid = L.latLng( (coords[i][0]+coords[i+1][0])/2, (coords[i][1]+coords[i+1][1])/2 );
+        L.circleMarker(mid, { radius: 3, color: '#0ea5e9', fillColor: '#0ea5e9', fillOpacity: 1 }).addTo(routeLayer);
+      }
+      const minutes = res.timeSec/60;
+      etaBadge.textContent = `ETA: ${minutes.toFixed(1)} min`;
+      showToast('Optimal path highlighted (min travel time).');
+    }
+
+    // Simulate live congestion updates
+    function randomJitter(c){
+      const j = (Math.random()-0.5)*0.2; // +/-0.1
+      return Math.max(0, Math.min(1, c + j));
+    }
+
+    let updateTimer = null;
+    function startUpdates(){
+      stopUpdates();
+      updateTimer = setInterval(() => {
+        edges = edges.map(e => ({ ...e, congestion: randomJitter(e.congestion) }));
+        renderEdges();
+        // If a route exists, recompute between current selects
+        const s = startSelect.value, g = endSelect.value;
+        if (s && g && s!==g) drawRoute(s,g);
+      }, 5000);
+    }
+    function stopUpdates(){ if (updateTimer) { clearInterval(updateTimer); updateTimer = null; } }
+
+    autoUpdate.addEventListener('change', (e)=>{ e.target.checked ? (startUpdates(), showToast('Live updates ON')) : (stopUpdates(), showToast('Live updates OFF')); });
+    startUpdates();
+
+    // Fit bounds
+    const allLatLng = Object.values(nodes).map(n => [n.lat, n.lng]);
+    map.fitBounds(allLatLng);
+  </script>
+</body>
+</html>
